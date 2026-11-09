@@ -2,7 +2,7 @@
 
 Open-sale **monitor / reminder** assistant for Damai (大麦) concert tickets.
 
-大麦演唱会 **开售监控与提醒** 助手（本阶段为项目脚手架）。
+大麦演唱会 **开售监控与提醒** 助手（脚手架 + 调研 + 架构设计已完成；业务模块按阶段实现）。
 
 ## Scope / 范围
 
@@ -38,6 +38,14 @@ Expected: a startup banner (project name, monitor/reminder mode, Python version)
 
 Copy `config/settings.example.yaml` to `config/settings.yaml` when you add real settings later.
 Do not commit secrets.
+
+
+## Docs / 文档
+
+- [系统架构](docs/architecture.md) — 模块边界、接口、Qt/调度并发、安全与 ToS
+- [数据库设计](docs/database_design.md) — SQLite 表结构与数据模型
+- [开发计划](docs/development_plan.md) — 分阶段实现与门控暂停
+- [开源调研](docs/research_report.md) — 技术选型与不建议使用的抢票类项目
 
 ## License / note
 
