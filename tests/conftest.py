@@ -33,7 +33,13 @@ def example_settings_yaml(tmp_path: Path) -> Path:
                 "open_sale_at": "2026-12-01T12:00:00+08:00",
             }
         ],
-        "notify": {"channels": ["console"]},
+        "notify": {
+            "channels": ["console", "logging", "gui"],
+            "reminder_offsets_minutes": [10, 1, 0],
+            "sound_enabled": False,
+            "desktop_enabled": False,
+            "gui_enabled": True,
+        },
     }
     path = tmp_path / "settings.yaml"
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")

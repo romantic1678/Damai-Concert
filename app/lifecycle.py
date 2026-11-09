@@ -8,11 +8,12 @@ from pathlib import Path
 from app.config import Settings, load_settings
 from app.logging_config import get_logger, setup_logging
 from app.notify.base import NotifierService
-from app.notify.console import ConsoleNotifier
+from app.notify.factory import build_notifier_service
+from app.notify.gui_sink import QueueGuiSink
 from app.scheduler.jobs import SchedulerService
 from app.services.countdown import CountdownService
-from app.services.monitor import FixtureStatusFetcher, MonitorService, RejectNetworkFetcher
-from app.services.runtime import TaskRuntime
+from app.services.monitor import MonitorService, RejectNetworkFetcher
+from app.services.runtime import TaskRuntime, minutes_to_offset_seconds
 from app.services.task_service import TaskService
 from app.storage.database import Database
 from app.storage.repositories import TaskRepository
@@ -29,6 +30,7 @@ class Application:
     monitor: MonitorService
     scheduler: SchedulerService
     notifier: NotifierService
+    gui_sink: QueueGuiSink
     runtime: TaskRuntime
     _started: bool = field(default=False, init=False, repr=False)
 
@@ -52,10 +54,7 @@ class Application:
         repo = TaskRepository(database)
         task_service = TaskService(repo, settings)
 
-        # Default: reject network (monitor/reminder product still works with fixtures/manual).
-        fetcher: object
         if enable_network_fetch:
-            # Intentionally not implementing a live Damai scraper in phase 6.
             fetcher = RejectNetworkFetcher()
             logger.warning(
                 "enable_network_fetch requested but live Damai fetch is not implemented; "
@@ -64,8 +63,7 @@ class Application:
         else:
             fetcher = RejectNetworkFetcher()
 
-        notifier = NotifierService()
-        notifier.register(ConsoleNotifier())
+        notifier, gui_sink = build_notifier_service(settings, database)
         countdown = CountdownService(
             task_service,
             timezone=settings.monitor.timezone,
@@ -77,6 +75,7 @@ class Application:
             min_poll_interval_seconds=settings.monitor.poll_interval_seconds,
         )
         scheduler = SchedulerService(timezone=settings.monitor.timezone)
+        offsets = minutes_to_offset_seconds(settings.notify.reminder_offsets_minutes)
         runtime = TaskRuntime(
             database=database,
             task_service=task_service,
@@ -84,6 +83,7 @@ class Application:
             monitor=monitor,
             scheduler=scheduler,
             notifier=notifier,
+            reminder_offsets=offsets,
         )
         app = cls(
             settings=settings,
@@ -93,6 +93,7 @@ class Application:
             monitor=monitor,
             scheduler=scheduler,
             notifier=notifier,
+            gui_sink=gui_sink,
             runtime=runtime,
         )
         app._started = True
@@ -100,10 +101,11 @@ class Application:
             scheduler.start()
             runtime.arm_all_watching()
         logger.info(
-            "application started mode=%s db=%s scheduler=%s",
+            "application started mode=%s db=%s scheduler=%s offsets=%s",
             settings.app.mode,
             db_path,
             start_scheduler,
+            offsets,
         )
         return app
 

@@ -13,7 +13,7 @@ from app.logging_config import get_logger
 
 logger = get_logger("storage")
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
 _CST = timezone(timedelta(hours=8))
@@ -119,6 +119,25 @@ class Database:
         self._record_migration(2)
         logger.info("applied schema migration to v2")
 
+    def _apply_v3(self) -> None:
+        """Notification dedupe table for multi-channel alerts."""
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notification_dedupe (
+              dedupe_key TEXT PRIMARY KEY,
+              kind TEXT NOT NULL,
+              task_id INTEGER,
+              created_at TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notification_dedupe_kind "
+            "ON notification_dedupe(kind)"
+        )
+        self._record_migration(3)
+        logger.info("applied schema migration to v3")
+
     def migrate(self) -> None:
         """Apply pending schema versions up to SCHEMA_VERSION."""
         with self._lock:
@@ -143,6 +162,9 @@ class Database:
                 if current < 2:
                     self._apply_v2()
                     current = 2
+                if current < 3:
+                    self._apply_v3()
+                    current = 3
 
                 if current < SCHEMA_VERSION:
                     raise StorageError(

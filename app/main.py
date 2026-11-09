@@ -63,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Demo countdown reminders + mock status monitor (local fixtures only)",
     )
+    parser.add_argument(
+        "--test-notify",
+        action="store_true",
+        help="Send a test notification through all configured channels",
+    )
     parser.add_argument("--version", action="store_true")
     return parser
 
@@ -203,6 +208,26 @@ def _scheduler_demo(app: Application) -> int:
 
 
 
+def _test_notify(app: Application) -> int:
+    """Fire a force test notification (bypasses dedupe) across channels."""
+    from app.notify.kinds import REQUIRED_KINDS
+
+    event = app.notifier.notify(
+        "测试通知",
+        "Damai Ticket Assistant test notify — monitor/reminder only.",
+        kind="test_notify",
+        urgent=True,
+        dedupe_key="test_notify:manual",
+        force=True,
+    )
+    print(f"test notify delivered={event.delivered} channels_registered={len(app.notifier._notifiers)}")  # noqa: SLF001
+    print(f"gui queue size={len(app.gui_sink.peek())}")
+    print(f"known kinds sample={sorted(REQUIRED_KINDS)[:3]}...")
+    print("test-notify OK")
+    return 0
+
+
+
 def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -233,6 +258,8 @@ def run(argv: list[str] | None = None) -> int:
                 return _list_or_search(app, args)
             if args.scheduler_demo:
                 return _scheduler_demo(app)
+            if args.test_notify:
+                return _test_notify(app)
 
             count = app.task_service.count()
             print(f"  tasks in database: {count}")

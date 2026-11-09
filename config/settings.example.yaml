@@ -34,5 +34,12 @@ events:
 notify:
   channels:
     - console
-    # - desktop  # future
-    # - webhook  # future; put URL in local settings.yaml only
+    - logging
+    - gui
+    - desktop
+    - sound
+  # Minutes before open_sale_at; include 0 for sale-start. Customizable.
+  reminder_offsets_minutes: [10, 1, 0]
+  sound_enabled: true
+  desktop_enabled: true
+  gui_enabled: true

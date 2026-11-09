@@ -103,3 +103,13 @@ CREATE TABLE IF NOT EXISTS browser_sessions (
   notes TEXT,
   FOREIGN KEY (task_id) REFERENCES concert_tasks(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE IF NOT EXISTS notification_dedupe (
+  dedupe_key TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  task_id INTEGER,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notification_dedupe_kind
+  ON notification_dedupe(kind);

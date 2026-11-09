@@ -46,7 +46,12 @@ class LoggingSettings:
 
 @dataclass(slots=True)
 class NotifySettings:
-    channels: list[str] = field(default_factory=lambda: ["console"])
+    channels: list[str] = field(default_factory=lambda: ["console", "logging", "gui"])
+    # Minutes before open_sale_at; 0 = sale start. Example: [10, 1, 0]
+    reminder_offsets_minutes: list[int] = field(default_factory=lambda: [10, 1, 0])
+    sound_enabled: bool = True
+    desktop_enabled: bool = True
+    gui_enabled: bool = True
 
 
 @dataclass(slots=True)
@@ -161,9 +166,31 @@ def load_settings(
             )
         )
 
-    channels = notify_raw.get("channels", ["console"])
+    channels = notify_raw.get("channels", ["console", "logging", "gui"])
     if not isinstance(channels, list) or not all(isinstance(c, str) for c in channels):
         raise ConfigError("notify.channels must be a list of strings")
+
+    offsets_raw = notify_raw.get("reminder_offsets_minutes", [10, 1, 0])
+    if not isinstance(offsets_raw, list) or not offsets_raw:
+        raise ConfigError("notify.reminder_offsets_minutes must be a non-empty list")
+    offsets: list[int] = []
+    for item in offsets_raw:
+        try:
+            minutes = int(item)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(
+                f"invalid reminder offset minutes: {item!r}"
+            ) from exc
+        if minutes < 0:
+            raise ConfigError("reminder offset minutes must be >= 0")
+        offsets.append(minutes)
+    # unique preserve order
+    seen: set[int] = set()
+    uniq_offsets: list[int] = []
+    for m in offsets:
+        if m not in seen:
+            seen.add(m)
+            uniq_offsets.append(m)
 
     return Settings(
         app=AppSettings(
@@ -184,7 +211,13 @@ def load_settings(
             max_bytes=int(logging_raw.get("max_bytes", 1_048_576)),
             backup_count=int(logging_raw.get("backup_count", 5)),
         ),
-        notify=NotifySettings(channels=list(channels)),
+        notify=NotifySettings(
+            channels=list(channels),
+            reminder_offsets_minutes=uniq_offsets,
+            sound_enabled=bool(notify_raw.get("sound_enabled", True)),
+            desktop_enabled=bool(notify_raw.get("desktop_enabled", True)),
+            gui_enabled=bool(notify_raw.get("gui_enabled", True)),
+        ),
         url_allowlist=allowlist,
         events=events,
         project_root=PROJECT_ROOT,

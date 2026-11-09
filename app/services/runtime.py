@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Callable, Sequence
 
@@ -9,6 +10,15 @@ from app.errors import AppError, MonitorFetchError, ValidationError
 from app.logging_config import get_logger
 from app.models import ConcertTask, dt_to_iso
 from app.notify.base import NotifierService
+from app.notify.kinds import (
+    BROWSER_LAUNCH_FAILED,
+    HUMAN_TAKEOVER_NEEDED,
+    MONITOR_EXCEPTION,
+    STATUS_CHANGE,
+    TASK_STOPPED,
+    sale_reminder_kind,
+    sale_reminder_title,
+)
 from app.scheduler.jobs import SchedulerService
 from app.services.countdown import DEFAULT_REMINDER_OFFSETS, CountdownService
 from app.services.monitor import MonitorService
@@ -27,6 +37,10 @@ def reminder_job_id(task_id: int, offset_seconds: int) -> str:
 
 def monitor_job_id(task_id: int) -> str:
     return f"monitor:{task_id}"
+
+
+def minutes_to_offset_seconds(minutes: Sequence[int]) -> tuple[int, ...]:
+    return tuple(sorted({int(m) * 60 for m in minutes}, reverse=True))
 
 
 class TaskRuntime:
@@ -50,7 +64,7 @@ class TaskRuntime:
         self._monitor = monitor
         self._scheduler = scheduler
         self._notifier = notifier
-        self._offsets = tuple(sorted(set(reminder_offsets), reverse=True))
+        self._offsets = tuple(sorted(set(int(x) for x in reminder_offsets), reverse=True))
         self._clock = clock or wall_now
 
     # --- reminder persistence ---
@@ -129,35 +143,29 @@ class TaskRuntime:
             if task.open_sale_at is not None:
                 snap = self._countdown.snapshot_task(task)
 
-            if offset_seconds == 0:
-                kind = "sale_due"
-                title = "开售时间到"
-                msg = f"「{task.name}」已到开售时间，请自行打开官方页面购票（本程序不会自动下单）。"
-            elif offset_seconds == 60:
-                kind = "sale_t_minus_1m"
-                title = "开售前 1 分钟"
-                msg = f"「{task.name}」将在约 1 分钟后开售。"
-            elif offset_seconds == 600:
-                kind = "sale_t_minus_10m"
-                title = "开售前 10 分钟"
-                msg = f"「{task.name}」将在约 10 分钟后开售。"
+            kind = sale_reminder_kind(offset_seconds)
+            title = sale_reminder_title(offset_seconds)
+            if offset_seconds <= 0:
+                msg = (
+                    f"「{task.name}」已到开售时间，请自行打开官方页面购票"
+                    f"（本程序不会自动下单）。"
+                )
             else:
-                kind = f"sale_t_minus_{offset_seconds}s"
-                title = f"开售前提醒 (-{offset_seconds}s)"
-                msg = f"「{task.name}」开售提醒。"
-
+                msg = f"「{task.name}」开售提醒（T-{offset_seconds}s）。"
             if snap is not None:
                 msg += f" remaining={snap.remaining_seconds:.1f}s"
 
-            self._notifier.notify(
+            dedupe_key = job_id  # remind:{task}:{offset} — stable across channels
+            event = self._notifier.notify(
                 title,
                 msg,
                 kind=kind,
                 task_id=task_id,
                 urgent=(offset_seconds <= 60),
+                dedupe_key=dedupe_key,
             )
             self._mark_job(job_id, "done")
-            return True
+            return bool(event.delivered)
         except AppError as exc:
             logger.error("reminder failed task=%s: %s", task_id, exc.user_message)
             self._safe_pause_on_error(task_id, exc.user_message)
@@ -175,38 +183,97 @@ class TaskRuntime:
             diff = self._monitor.poll_once(task_id)
             if diff.should_notify:
                 prev = diff.previous.normalized_status if diff.previous else "?"
+                key = (
+                    f"status_change:{task_id}:"
+                    f"{prev}->{diff.current.normalized_status}:"
+                    f"{diff.current.content_hash}"
+                )
                 self._notifier.notify(
                     "公开销售状态变化",
                     f"「{task.name}」{prev} → {diff.current.normalized_status}",
-                    kind="status_change",
+                    kind=STATUS_CHANGE,
                     task_id=task_id,
                     urgent=True,
+                    dedupe_key=key,
                 )
         except AppError as exc:
             logger.error("monitor poll failed task=%s: %s", task_id, exc.user_message)
-            # Fetch failures already map to unknown inside MonitorService;
-            # persistent app errors pause scheduling for safety.
+            self.emit_monitor_exception(task_id, exc.user_message)
             if not isinstance(exc, MonitorFetchError):
                 self._safe_pause_on_error(task_id, exc.user_message)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.exception("monitor poll crashed task=%s", task_id)
+            self.emit_monitor_exception(task_id, str(exc))
             self._safe_pause_on_error(task_id, "monitor crashed")
+
+    # --- explicit event emitters (stubs for browser / takeover / stop) ---
+
+    def emit_browser_launch_failed(
+        self,
+        task_id: int,
+        reason: str,
+        *,
+        session_key: str | None = None,
+    ) -> bool:
+        key = f"browser_launch_failed:{task_id}:{session_key or hashlib.sha1(reason.encode()).hexdigest()[:12]}"
+        event = self._notifier.notify(
+            "浏览器启动失败",
+            f"task {task_id}: {reason}",
+            kind=BROWSER_LAUNCH_FAILED,
+            task_id=task_id,
+            urgent=True,
+            dedupe_key=key,
+        )
+        return bool(event.delivered)
+
+    def emit_human_takeover_needed(self, task_id: int, reason: str = "") -> bool:
+        key = f"human_takeover_needed:{task_id}"
+        msg = f"task {task_id} 需要人工接管"
+        if reason:
+            msg += f"：{reason}"
+        event = self._notifier.notify(
+            "需要人工接管",
+            msg,
+            kind=HUMAN_TAKEOVER_NEEDED,
+            task_id=task_id,
+            urgent=True,
+            dedupe_key=key,
+        )
+        return bool(event.delivered)
+
+    def emit_monitor_exception(self, task_id: int, reason: str) -> bool:
+        digest = hashlib.sha1(reason.encode("utf-8", errors="replace")).hexdigest()[:12]
+        key = f"monitor_exception:{task_id}:{digest}"
+        event = self._notifier.notify(
+            "监控任务异常",
+            f"task {task_id}: {reason}",
+            kind=MONITOR_EXCEPTION,
+            task_id=task_id,
+            urgent=True,
+            dedupe_key=key,
+        )
+        return bool(event.delivered)
+
+    def emit_task_stopped(self, task_id: int, reason: str = "stopped") -> bool:
+        key = f"task_stopped:{task_id}:{reason}"
+        event = self._notifier.notify(
+            "任务已停止",
+            f"task {task_id}: {reason}",
+            kind=TASK_STOPPED,
+            task_id=task_id,
+            urgent=False,
+            dedupe_key=key,
+        )
+        return bool(event.delivered)
 
     def _safe_pause_on_error(self, task_id: int, reason: str) -> None:
         try:
-            self.pause_task(task_id, note=f"auto-paused: {reason}")
-            self._notifier.notify(
-                "任务已安全暂停",
-                f"task {task_id}: {reason}",
-                kind="task_paused_error",
-                task_id=task_id,
-                urgent=True,
-            )
+            self.pause_task(task_id, note=f"auto-paused: {reason}", emit_stopped=True)
         except Exception:  # noqa: BLE001
             logger.exception("failed to safe-pause task=%s", task_id)
 
     def schedule_task_reminders(self, task_id: int) -> int:
-        """Schedule future T-10 / T-1 / T-0 reminders. Returns number scheduled."""
+        """Schedule future reminders for configured offsets. Returns number scheduled."""
         task = self._tasks.require(task_id)
         if task.open_sale_at is None:
             raise ValidationError("open_sale_at required to schedule reminders")
@@ -217,7 +284,6 @@ class TaskRuntime:
             fire_at = self._countdown.reminder_fire_at(task.open_sale_at, offset)
             fire_at = ensure_aware(fire_at)
             if fire_at <= now:
-                # Past fire time: skip scheduling (do not retro-spam)
                 self._record_job(
                     task_id,
                     job_id,
@@ -258,7 +324,6 @@ class TaskRuntime:
             interval_seconds=interval,
             status="scheduled",
         )
-        # Establish baseline immediately without notify
         try:
             if self._monitor._latest_snapshot(task_id) is None:  # noqa: SLF001
                 self._monitor.establish_baseline(task_id)
@@ -282,13 +347,26 @@ class TaskRuntime:
         if self._job_status(mid) == "scheduled":
             self._mark_job(mid, "cancelled")
 
-    def pause_task(self, task_id: int, *, note: str | None = None) -> ConcertTask:
+    def pause_task(
+        self,
+        task_id: int,
+        *,
+        note: str | None = None,
+        emit_stopped: bool = False,
+    ) -> ConcertTask:
         fields: dict = {"status": "paused", "monitor_enabled": False}
         if note:
             fields["note"] = note
         task = self._tasks.update(task_id, **fields)
         self.unschedule_task(task_id)
         logger.info("paused task %s", task_id)
+        if emit_stopped:
+            self.emit_task_stopped(task_id, reason=note or "paused")
+        return task
+
+    def stop_task(self, task_id: int, *, reason: str = "user_stop") -> ConcertTask:
+        """Stop monitoring/reminders and emit task_stopped."""
+        task = self.pause_task(task_id, note=reason, emit_stopped=True)
         return task
 
     def resume_task(self, task_id: int, *, enable_monitor: bool = False) -> ConcertTask:
