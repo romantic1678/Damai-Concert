@@ -40,6 +40,17 @@ Copy `config/settings.example.yaml` to `config/settings.yaml` when you add real 
 Do not commit secrets.
 
 
+## Browser assist / 浏览器辅助
+
+Playwright opens **allowlisted official pages** (or local mock pages) for **manual** login and browsing.
+
+**Will not:** solve captchas, jump queues, spoof fingerprints, evade anti-bot, call private APIs, auto-pay, or store credentials.
+
+```bash
+python -m app --browser-demo          # local mock HTML via 127.0.0.1
+python -m app --open-url https://detail.damai.cn/... --headed
+```
+
 ## Tests
 
 ```bash

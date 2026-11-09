@@ -68,6 +68,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Send a test notification through all configured channels",
     )
+    parser.add_argument(
+        "--browser-demo",
+        action="store_true",
+        help="Open local mock ticket page with Playwright (no Damai network)",
+    )
+    parser.add_argument(
+        "--open-url",
+        type=str,
+        default=None,
+        help="Open an allowlisted (or localhost) URL via Playwright assist",
+    )
+    parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="Run browser demo headed (default headless for CI/demo stability)",
+    )
     parser.add_argument("--version", action="store_true")
     return parser
 
@@ -228,6 +244,53 @@ def _test_notify(app: Application) -> int:
 
 
 
+def _browser_demo(app: Application, *, headed: bool = False) -> int:
+    """Local mock Playwright demo — never contacts Damai."""
+    from pathlib import Path
+
+    from app.browser.mock_server import MockBrowserServer
+    from app.browser.status import BrowserConnectionStatus
+
+    fixtures = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "browser"
+    server = MockBrowserServer(fixtures)
+    server.start()
+    try:
+        # Recreate assist headless flag for demo
+        app.browser._headless = not headed  # noqa: SLF001
+        url = server.url("ok.html")
+        info = app.browser.open_official_page(1, url, headless=not headed)
+        print(f"opened {info.official_url} status={info.status.value}")
+        # Navigate to verify page → should request human takeover
+        verify = server.url("verify.html")
+        app.browser.navigate(verify, task_id=1)
+        print(f"after verify status={app.browser.connection_status.value}")
+        assert app.browser.connection_status in {
+            BrowserConnectionStatus.HUMAN_TAKEOVER,
+            BrowserConnectionStatus.PAGE_READY,
+            BrowserConnectionStatus.PAGE_ERROR,
+        }
+        app.browser.pause(1)
+        print(f"paused status={app.browser.connection_status.value}")
+        app.browser.close(1)
+        print("browser-demo OK (mock only)")
+        return 0
+    finally:
+        try:
+            app.browser.close()
+        except Exception:
+            pass
+        server.stop()
+
+
+def _open_url(app: Application, url: str, *, headed: bool = False) -> int:
+    info = app.browser.open_official_page(0, url, headless=not headed)
+    print(f"opened {info.official_url} status={info.status.value}")
+    print("Leave the window for manual use, then Ctrl+C / close. (No auto-checkout.)")
+    app.browser.close(0)
+    return 0
+
+
+
 def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -240,6 +303,7 @@ def run(argv: list[str] | None = None) -> int:
         with Application.create(
             settings_path=args.settings,
             database_path=args.database,
+            browser_headless=not args.headed,
         ) as app:
             logger = get_logger("main")
             print("=" * 56)
@@ -260,6 +324,10 @@ def run(argv: list[str] | None = None) -> int:
                 return _scheduler_demo(app)
             if args.test_notify:
                 return _test_notify(app)
+            if args.browser_demo:
+                return _browser_demo(app, headed=args.headed)
+            if args.open_url:
+                return _open_url(app, args.open_url, headed=args.headed)
 
             count = app.task_service.count()
             print(f"  tasks in database: {count}")

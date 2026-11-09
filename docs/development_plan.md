@@ -18,6 +18,7 @@
 | 五 · 任务 CRUD | ✅ | 扩展字段、搜索排序、校验、schema v2、持久化测试 |
 | 六 · 倒计时与监控 | ✅ | Countdown/Reminders/Monitor/TaskRuntime、fixture 差分、安全暂停 |
 | 七 · 通知模块 | ✅ | 多通道、去重、可配置偏移、声音开关、`--test-notify` |
+| 八 · 浏览器辅助 | ✅ | Playwright 打开官方/本地页、人工接管、异常通知 |
 
 技术基线：Python **3.13.5**；PySide6 **6.12.0**；playwright **1.64.1**；APScheduler **3.11.3**；PyYAML **6.0.3**；PyInstaller **6.22.3**；sqlite3 标准库。
 

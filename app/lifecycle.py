@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.browser.assist import BrowserAssist
+from app.browser.status import StatusHub
+from app.browser.takeover import HumanTakeoverService
 from app.config import Settings, load_settings
 from app.logging_config import get_logger, setup_logging
 from app.notify.base import NotifierService
@@ -32,6 +35,9 @@ class Application:
     notifier: NotifierService
     gui_sink: QueueGuiSink
     runtime: TaskRuntime
+    browser: BrowserAssist
+    browser_status: StatusHub
+    takeover: HumanTakeoverService
     _started: bool = field(default=False, init=False, repr=False)
 
     @classmethod
@@ -43,6 +49,7 @@ class Application:
         ensure_settings: bool = True,
         enable_network_fetch: bool = False,
         start_scheduler: bool = False,
+        browser_headless: bool = False,
     ) -> Application:
         settings = load_settings(settings_path, ensure_exists=ensure_settings)
         setup_logging(settings)
@@ -85,6 +92,18 @@ class Application:
             notifier=notifier,
             reminder_offsets=offsets,
         )
+        status_hub = StatusHub()
+        takeover = HumanTakeoverService()
+        user_data = settings.project_root / "data" / "browser_profile"
+        browser = BrowserAssist(
+            url_allowlist=settings.url_allowlist,
+            notifier=notifier,
+            runtime=runtime,
+            takeover=takeover,
+            status_hub=status_hub,
+            user_data_dir=None,  # opt-in later; avoid sharing profiles in tests
+            headless=browser_headless,
+        )
         app = cls(
             settings=settings,
             database=database,
@@ -95,6 +114,9 @@ class Application:
             notifier=notifier,
             gui_sink=gui_sink,
             runtime=runtime,
+            browser=browser,
+            browser_status=status_hub,
+            takeover=takeover,
         )
         app._started = True
         if start_scheduler:
@@ -113,6 +135,10 @@ class Application:
         if not self._started:
             return
         logger = get_logger("lifecycle")
+        try:
+            self.browser.close()
+        except Exception:  # noqa: BLE001
+            logger.exception("browser shutdown error")
         try:
             self.scheduler.shutdown(wait=False)
         except Exception:  # noqa: BLE001
