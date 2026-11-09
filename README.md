@@ -71,6 +71,8 @@ pytest
 - [系统架构](docs/architecture.md) — 模块边界、接口、Qt/调度并发、安全与 ToS
 - [数据库设计](docs/database_design.md) — SQLite 表结构与数据模型
 - [开发计划](docs/development_plan.md) — 分阶段实现与门控暂停
+- [测试报告](docs/test_report.md)
+- [安全审查](docs/security_report.md)
 - [开源调研](docs/research_report.md) — 技术选型与不建议使用的抢票类项目
 
 ## License / note

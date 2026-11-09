@@ -100,6 +100,15 @@ class NotifierService:
 
             if self._db is not None:
                 try:
+                    log_task_id = task_id
+                    if task_id is not None:
+                        exists = self._db.fetchone(
+                            "SELECT 1 AS ok FROM concert_tasks WHERE id = ?",
+                            (task_id,),
+                        )
+                        if exists is None:
+                            # Avoid FK failures for ephemeral/demo task ids
+                            log_task_id = None
                     self._db.execute(
                         """
                         INSERT INTO notification_logs (
@@ -107,7 +116,7 @@ class NotifierService:
                         ) VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
-                            task_id,
+                            log_task_id,
                             "fanout",
                             title,
                             message,
