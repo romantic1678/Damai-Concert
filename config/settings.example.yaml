@@ -1,13 +1,29 @@
 # Damai Ticket Assistant — example settings (monitor / reminder only)
-# Copy to settings.yaml for local use. No credentials required for this phase.
+# Copied to settings.yaml on first run if missing. Do not commit secrets.
 
 app:
   name: Damai Ticket Assistant
   mode: monitor_reminder  # never purchase / checkout
 
 monitor:
-  poll_interval_seconds: 60
+  poll_interval_seconds: 60  # minimum allowed: 60
   timezone: Asia/Shanghai
+
+database:
+  path: data/app.db
+
+logging:
+  level: INFO
+  console: true
+  file: data/logs/app.log
+  max_bytes: 1048576
+  backup_count: 5
+
+url_allowlist:
+  - damai.cn
+  - www.damai.cn
+  - m.damai.cn
+  - detail.damai.cn
 
 events:
   - name: Example Concert Tour 2026

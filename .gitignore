@@ -39,3 +39,6 @@ data/*
 *.log
 .env
 .venv-backup/
+
+# Pytest
+.pytest_cache/

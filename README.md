@@ -40,6 +40,13 @@ Copy `config/settings.example.yaml` to `config/settings.yaml` when you add real 
 Do not commit secrets.
 
 
+## Tests
+
+```bash
+source .venv/bin/activate
+pytest
+```
+
 ## Docs / 文档
 
 - [系统架构](docs/architecture.md) — 模块边界、接口、Qt/调度并发、安全与 ToS

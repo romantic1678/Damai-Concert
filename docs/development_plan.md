@@ -13,7 +13,8 @@
 |------|------|------|
 | 一 · 脚手架 | ✅ | `/workspace/damai-ticket-assistant`、`.venv`、README、requirements、示例配置、最小 `app.main`、Git 初提交 |
 | 二 · 开源调研 | ✅ | `docs/research_report.md` |
-| 三 · 架构设计 | ✅（本阶段文档） | `architecture.md` / `database_design.md` / `development_plan.md` |
+| 三 · 架构设计 | ✅ | `architecture.md` / `database_design.md` / `development_plan.md` |
+| 四 · 存储与模型 | ✅ | config/logging/sqlite/models/TaskService/pytest；入口 `python -m app` |
 
 技术基线：Python **3.13.5**；PySide6 **6.12.0**；playwright **1.64.1**；APScheduler **3.11.3**；PyYAML **6.0.3**；PyInstaller **6.22.3**；sqlite3 标准库。
 
