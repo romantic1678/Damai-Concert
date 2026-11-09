@@ -11,11 +11,17 @@ import yaml
 
 from app.errors import ConfigError
 from app.models import DEFAULT_URL_ALLOWLIST
+from app.paths import (
+    bundle_root,
+    default_settings_example_path,
+    default_settings_path,
+    writable_root,
+)
 
-# Project root: .../damai-ticket-assistant
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_EXAMPLE = PROJECT_ROOT / "config" / "settings.example.yaml"
-DEFAULT_SETTINGS = PROJECT_ROOT / "config" / "settings.yaml"
+# Project / bundle root (read-only when frozen)
+PROJECT_ROOT = bundle_root()
+DEFAULT_EXAMPLE = default_settings_example_path()
+DEFAULT_SETTINGS = default_settings_path()
 
 
 @dataclass(slots=True)
@@ -71,9 +77,10 @@ class Settings:
     notify: NotifySettings = field(default_factory=NotifySettings)
     url_allowlist: tuple[str, ...] = DEFAULT_URL_ALLOWLIST
     events: list[EventPlaceholder] = field(default_factory=list)
-    project_root: Path = PROJECT_ROOT
+    project_root: Path = field(default_factory=writable_root)
 
     def resolve_path(self, relative: str) -> Path:
+        """Resolve relative paths against the writable app root (data/logs/db)."""
         path = Path(relative)
         if path.is_absolute():
             return path
@@ -93,8 +100,8 @@ def ensure_runtime_settings(
     example_path: Path | None = None,
 ) -> Path:
     """Copy example settings to runtime path if missing. Returns settings path."""
-    target = settings_path or DEFAULT_SETTINGS
-    source = example_path or DEFAULT_EXAMPLE
+    target = settings_path or default_settings_path()
+    source = example_path or default_settings_example_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.is_file():
         if not source.is_file():
@@ -220,5 +227,5 @@ def load_settings(
         ),
         url_allowlist=allowlist,
         events=events,
-        project_root=PROJECT_ROOT,
+        project_root=writable_root(),
     )

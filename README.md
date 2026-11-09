@@ -74,6 +74,17 @@ pytest
 - [测试报告](docs/test_report.md)
 - [安全审查](docs/security_report.md)
 - [开源调研](docs/research_report.md) — 技术选型与不建议使用的抢票类项目
+- [Windows 安装与构建](docs/windows_installation.md) — GitHub Actions `windows-latest` 打包 EXE（Linux 不能产出可用 Windows EXE）
+
+## Windows build / Windows 打包
+
+Windows EXE 必须在 **GitHub Actions `windows-latest`**（或真实 Windows）上构建，见：
+
+- 工作流：`.github/workflows/windows-build.yml`（`workflow_dispatch` / tag `v*`）
+- 脚本：`scripts/build_windows.ps1`
+- 说明：[docs/windows_installation.md](docs/windows_installation.md)
+
+当前 Debian 研发环境 **不会**本地生成可运行的 Windows EXE；未完成 GitHub 授权推送前也 **没有**已发布的安装包。
 
 ## License / note
 

@@ -215,3 +215,11 @@ tests/
 ## 12. 下一可执行阶段（待指令）
 
 用户确认后开始 **阶段四：存储与领域模型**。在此之前不创建业务模块实现文件（本阶段仅文档）。
+
+
+## Phase 11 — Windows packaging scaffolding（完成）
+
+- `scripts/build_windows.ps1`、`.github/workflows/windows-build.yml`、`docs/windows_installation.md`
+- `app/paths.py`、`DamaiTicketAssistant.spec`、`run_app.py`
+- 版本 `0.11.0`
+- **注意**：脚手架已就绪；在 Debian 上未产出 Windows EXE；需 Actions windows-latest 实际构建。

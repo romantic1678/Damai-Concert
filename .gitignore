@@ -15,9 +15,11 @@ dist/
 build/
 *.egg
 
-# PyInstaller
+# PyInstaller build leftovers (keep project DamaiTicketAssistant.spec tracked)
 *.manifest
 *.spec
+!DamaiTicketAssistant.spec
+.venv-win/
 
 # Playwright browsers (local cache; install separately if needed)
 .playwright/

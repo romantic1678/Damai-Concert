@@ -1,0 +1,56 @@
+name: Windows Build
+
+# Produces a Windows onedir EXE on GitHub-hosted windows-latest.
+# This workflow does NOT run on Linux self-hosted Debian builders.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  # Allow manual / tag builds; optional PR trigger omitted to save minutes.
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build EXE (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Build with PowerShell
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          ./scripts/build_windows.ps1
+
+      - name: Verify artifact exists
+        shell: pwsh
+        run: |
+          $exe = "dist/DamaiTicketAssistant/DamaiTicketAssistant.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Error "Missing $exe"
+            exit 1
+          }
+          Get-ChildItem -Recurse dist/DamaiTicketAssistant | Select-Object FullName, Length | Format-Table -AutoSize
+          Get-Content dist/DamaiTicketAssistant/BUILD_OK.txt
+
+      - name: Upload Windows dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: DamaiTicketAssistant-windows
+          path: dist/DamaiTicketAssistant
+          if-no-files-found: error
+          retention-days: 14

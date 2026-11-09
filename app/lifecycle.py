@@ -9,6 +9,7 @@ from app.browser.assist import BrowserAssist
 from app.browser.status import StatusHub
 from app.browser.takeover import HumanTakeoverService
 from app.config import Settings, load_settings
+from app.paths import ensure_playwright_env
 from app.logging_config import get_logger, setup_logging
 from app.notify.base import NotifierService
 from app.notify.factory import build_notifier_service
@@ -51,6 +52,7 @@ class Application:
         start_scheduler: bool = False,
         browser_headless: bool = False,
     ) -> Application:
+        ensure_playwright_env()
         settings = load_settings(settings_path, ensure_exists=ensure_settings)
         setup_logging(settings)
         logger = get_logger("lifecycle")
