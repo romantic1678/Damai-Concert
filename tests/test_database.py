@@ -20,6 +20,17 @@ def test_migrate_creates_tables(tmp_path: Path) -> None:
     assert "reminder_jobs" in tables
     assert "notification_logs" in tables
     assert "browser_sessions" in tables
+    cols = {r["name"] for r in db.fetchall("PRAGMA table_info(concert_tasks)")}
+    for col in (
+        "artist_name",
+        "show_date",
+        "session_name",
+        "target_price",
+        "target_tier",
+        "ticket_quantity",
+        "status",
+    ):
+        assert col in cols
     row = db.fetchone(
         "SELECT version FROM schema_migrations WHERE version = ?",
         (SCHEMA_VERSION,),

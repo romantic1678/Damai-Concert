@@ -1,4 +1,5 @@
--- Damai Ticket Assistant schema v1 (monitor / reminder only)
+-- Damai Ticket Assistant schema v1 base + v2 columns in CREATE for new DBs
+-- Incremental upgrades for existing DBs are applied in database.migrate() v2.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -15,13 +16,26 @@ CREATE TABLE IF NOT EXISTS concert_tasks (
   monitor_enabled INTEGER NOT NULL DEFAULT 0 CHECK (monitor_enabled IN (0, 1)),
   note TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  artist_name TEXT,
+  show_date TEXT,
+  session_name TEXT,
+  target_price REAL,
+  target_tier TEXT,
+  ticket_quantity INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending'
 );
 
 CREATE INDEX IF NOT EXISTS idx_concert_tasks_open_sale_at
   ON concert_tasks(open_sale_at);
 CREATE INDEX IF NOT EXISTS idx_concert_tasks_monitor
   ON concert_tasks(monitor_enabled);
+CREATE INDEX IF NOT EXISTS idx_concert_tasks_status
+  ON concert_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_concert_tasks_artist
+  ON concert_tasks(artist_name);
+CREATE INDEX IF NOT EXISTS idx_concert_tasks_show_date
+  ON concert_tasks(show_date);
 
 CREATE TABLE IF NOT EXISTS status_baselines (
   task_id INTEGER PRIMARY KEY,

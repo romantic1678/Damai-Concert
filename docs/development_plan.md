@@ -15,6 +15,7 @@
 | 二 · 开源调研 | ✅ | `docs/research_report.md` |
 | 三 · 架构设计 | ✅ | `architecture.md` / `database_design.md` / `development_plan.md` |
 | 四 · 存储与模型 | ✅ | config/logging/sqlite/models/TaskService/pytest；入口 `python -m app` |
+| 五 · 任务 CRUD | ✅ | 扩展字段、搜索排序、校验、schema v2、持久化测试 |
 
 技术基线：Python **3.13.5**；PySide6 **6.12.0**；playwright **1.64.1**；APScheduler **3.11.3**；PyYAML **6.0.3**；PyInstaller **6.22.3**；sqlite3 标准库。
 

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -19,6 +20,16 @@ NormalizedStatus = Literal[
 
 TakeoverStateName = Literal["idle", "browser_assist", "human_active"]
 
+TaskStatus = Literal["pending", "watching", "paused", "done", "cancelled"]
+
+TASK_STATUSES: frozenset[str] = frozenset(
+    {"pending", "watching", "paused", "done", "cancelled"}
+)
+
+# Typical concert ticket purchase bounds (metadata only — no auto-buy).
+TICKET_QUANTITY_MIN = 1
+TICKET_QUANTITY_MAX = 6
+
 DEFAULT_URL_ALLOWLIST: tuple[str, ...] = (
     "damai.cn",
     "www.damai.cn",
@@ -26,16 +37,40 @@ DEFAULT_URL_ALLOWLIST: tuple[str, ...] = (
     "detail.damai.cn",
 )
 
+SortField = Literal["open_sale_at", "created_at", "name", "city", "status", "show_date", "id"]
+SortDir = Literal["asc", "desc"]
+
 
 def parse_datetime(value: str | datetime | None) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, datetime):
         return value
-    text = value.strip()
+    text = str(value).strip()
     if not text:
         return None
-    return datetime.fromisoformat(text)
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValidationError(f"invalid datetime: {value!r}") from exc
+
+
+def parse_date(value: str | date | datetime | None) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        if "T" in text:
+            return datetime.fromisoformat(text).date()
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValidationError(f"invalid date: {value!r}") from exc
 
 
 def dt_to_iso(value: datetime | None) -> str | None:
@@ -44,16 +79,24 @@ def dt_to_iso(value: datetime | None) -> str | None:
     return value.isoformat()
 
 
+def date_to_iso(value: date | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
+
+
 def validate_official_url(
     url: str | None,
     allowlist: tuple[str, ...] | list[str] | None = None,
+    *,
+    required: bool = False,
 ) -> str | None:
-    """Validate HTTPS official URL against host allowlist. Empty/None is allowed."""
-    if url is None:
+    """Validate HTTPS official URL against host allowlist."""
+    if url is None or not str(url).strip():
+        if required:
+            raise ValidationError("official_url is required")
         return None
-    text = url.strip()
-    if not text:
-        return None
+    text = str(url).strip()
     parsed = urlparse(text)
     if parsed.scheme != "https":
         raise ValidationError("official_url must use https")
@@ -67,23 +110,93 @@ def validate_official_url(
     return text
 
 
+def validate_target_price(value: float | int | str | Decimal | None) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        if isinstance(value, Decimal):
+            price = float(value)
+        else:
+            price = float(value)
+    except (TypeError, ValueError, InvalidOperation) as exc:
+        raise ValidationError(f"target_price must be a number, got {value!r}") from exc
+    if price != price:  # NaN
+        raise ValidationError("target_price must be a finite number")
+    if price < 0:
+        raise ValidationError("target_price must be >= 0")
+    return price
+
+
+def validate_ticket_quantity(value: int | str | None) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        qty = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"ticket_quantity must be an integer, got {value!r}") from exc
+    if qty < TICKET_QUANTITY_MIN or qty > TICKET_QUANTITY_MAX:
+        raise ValidationError(
+            f"ticket_quantity must be between {TICKET_QUANTITY_MIN} and {TICKET_QUANTITY_MAX}"
+        )
+    return qty
+
+
+def validate_task_status(value: str | None) -> TaskStatus:
+    status = (value or "pending").strip().lower()
+    if status not in TASK_STATUSES:
+        raise ValidationError(
+            f"status must be one of {sorted(TASK_STATUSES)}, got {value!r}"
+        )
+    return status  # type: ignore[return-value]
+
+
 @dataclass(slots=True)
 class ConcertTask:
+    """Concert watch / reminder task (no auto-purchase fields beyond preferences)."""
+
     name: str
     id: int | None = None
+    artist_name: str | None = None
     city: str | None = None
     official_url: str | None = None
+    show_date: date | None = None
+    session_name: str | None = None
+    target_price: float | None = None
+    target_tier: str | None = None
+    ticket_quantity: int | None = None
     open_sale_at: datetime | None = None
+    status: TaskStatus = "pending"
     monitor_enabled: bool = False
     note: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
     def validate(self, allowlist: tuple[str, ...] | list[str] | None = None) -> None:
-        if not self.name or not self.name.strip():
+        if not self.name or not str(self.name).strip():
             raise ValidationError("task name is required")
-        self.name = self.name.strip()
+        self.name = str(self.name).strip()
+
+        if self.artist_name is not None:
+            self.artist_name = str(self.artist_name).strip() or None
+        if self.city is not None:
+            self.city = str(self.city).strip() or None
+        if self.session_name is not None:
+            self.session_name = str(self.session_name).strip() or None
+        if self.target_tier is not None:
+            self.target_tier = str(self.target_tier).strip() or None
+        if self.note is not None:
+            self.note = str(self.note).strip() or None
+
         self.official_url = validate_official_url(self.official_url, allowlist)
+        # Coerce string inputs (CLI / YAML / loose constructors)
+        if isinstance(self.show_date, (str, datetime)):
+            self.show_date = parse_date(self.show_date)  # type: ignore[arg-type]
+        if isinstance(self.open_sale_at, str):
+            self.open_sale_at = parse_datetime(self.open_sale_at)
+
+        self.target_price = validate_target_price(self.target_price)
+        self.ticket_quantity = validate_ticket_quantity(self.ticket_quantity)
+        self.status = validate_task_status(self.status)
 
 
 @dataclass(slots=True)
