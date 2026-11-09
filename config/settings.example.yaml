@@ -1,0 +1,22 @@
+# Damai Ticket Assistant — example settings (monitor / reminder only)
+# Copy to settings.yaml for local use. No credentials required for this phase.
+
+app:
+  name: Damai Ticket Assistant
+  mode: monitor_reminder  # never purchase / checkout
+
+monitor:
+  poll_interval_seconds: 60
+  timezone: Asia/Shanghai
+
+events:
+  - name: Example Concert Tour 2026
+    city: Shanghai
+    open_sale_at: "2026-12-01T12:00:00+08:00"
+    note: Placeholder only — replace with a real public listing later
+
+notify:
+  channels:
+    - console
+    # - desktop  # future
+    # - webhook  # future; put URL in local settings.yaml only
