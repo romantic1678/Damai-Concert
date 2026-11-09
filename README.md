@@ -40,6 +40,14 @@ Copy `config/settings.example.yaml` to `config/settings.yaml` when you add real 
 Do not commit secrets.
 
 
+## GUI / 桌面界面
+
+```bash
+python -m app --gui
+```
+
+中文主界面：任务列表、倒计时、开始/停止监控、打开官方页、通知设置、系统日志。浏览器操作在后台线程执行，不阻塞界面。
+
 ## Browser assist / 浏览器辅助
 
 Playwright opens **allowlisted official pages** (or local mock pages) for **manual** login and browsing.

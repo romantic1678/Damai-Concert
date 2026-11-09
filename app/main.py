@@ -84,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run browser demo headed (default headless for CI/demo stability)",
     )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch Chinese PySide6 desktop GUI",
+    )
     parser.add_argument("--version", action="store_true")
     return parser
 
@@ -298,6 +303,11 @@ def run(argv: list[str] | None = None) -> int:
     if args.version:
         print(__version__)
         return 0
+
+    if args.gui:
+        from app.gui.app_run import run_gui
+
+        return run_gui(settings_path=args.settings, database_path=args.database)
 
     try:
         with Application.create(
