@@ -58,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Insert N local mock tasks (no network)",
     )
+    parser.add_argument(
+        "--scheduler-demo",
+        action="store_true",
+        help="Demo countdown reminders + mock status monitor (local fixtures only)",
+    )
     parser.add_argument("--version", action="store_true")
     return parser
 
@@ -146,6 +151,58 @@ def _list_or_search(app: Application, args: argparse.Namespace) -> int:
     return 0
 
 
+def _scheduler_demo(app: Application) -> int:
+    """Local mock demo: countdown snapshots + reminder fire + fixture status diff."""
+    from datetime import timedelta
+    from pathlib import Path
+
+    from app.models import ConcertTask
+    from app.services.monitor import FixtureStatusFetcher
+    from app.timeutil import wall_now
+
+    fixtures = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "status"
+    now = wall_now(app.settings.monitor.timezone)
+    sale = now + timedelta(minutes=15)
+    task = app.task_service.create(
+        ConcertTask(
+            name="Demo Countdown Show",
+            artist_name="Demo Artist",
+            city="Shanghai",
+            official_url="https://detail.damai.cn/item.htm?id=demo",
+            open_sale_at=sale,
+            status="watching",
+            monitor_enabled=True,
+            ticket_quantity=2,
+            target_price=580,
+            target_tier="看台",
+        )
+    )
+    assert task.id is not None
+    snap = app.countdown.snapshot(task.id)
+    print(f"countdown: remaining={snap.remaining_seconds:.1f}s phase={snap.phase}")
+
+    # Swap in fixture fetcher for demo (still no network)
+    fetcher = FixtureStatusFetcher({task.id: fixtures / "pre_sale.html"})
+    app.monitor._fetcher = fetcher  # noqa: SLF001
+    base = app.monitor.establish_baseline(task.id)
+    print(f"baseline status={base.normalized_status}")
+    fetcher.set_path(task.id, fixtures / "on_sale.html")
+    diff = app.monitor.poll_once(task.id)
+    print(
+        f"diff notify={diff.should_notify} "
+        f"{diff.previous.normalized_status if diff.previous else None} -> {diff.current.normalized_status}"
+    )
+
+    # Fire reminder handlers idempotently (simulate T-10 without waiting)
+    app.runtime._record_job(task.id, f"remind:{task.id}:600", "countdown_offset", status="scheduled")
+    once = app.runtime.fire_reminder(task.id, 600)
+    twice = app.runtime.fire_reminder(task.id, 600)
+    print(f"reminder T-10 first={once} second={twice} events={len(app.notifier.events)}")
+    print("scheduler demo OK (mock only — no Damai network)")
+    return 0
+
+
+
 def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -174,6 +231,8 @@ def run(argv: list[str] | None = None) -> int:
                 return _seed_mock(app, args.seed_mock)
             if args.list_tasks or args.search is not None or args.status is not None:
                 return _list_or_search(app, args)
+            if args.scheduler_demo:
+                return _scheduler_demo(app)
 
             count = app.task_service.count()
             print(f"  tasks in database: {count}")
