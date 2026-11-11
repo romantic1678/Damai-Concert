@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -14,7 +15,19 @@ from app.logging_config import get_logger
 logger = get_logger("storage")
 
 SCHEMA_VERSION = 3
-SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
+
+
+def schema_sql_path() -> Path:
+    """Locate ``schema.sql`` in a source checkout or a frozen PyInstaller build.
+
+    Frozen onedir builds extract datas under ``sys._MEIPASS`` (the ``_internal``
+    directory). ``Path(__file__)`` points at the bundled module, not that file,
+    so v1 migration must resolve the packaged copy explicitly.
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass) / "app" / "storage" / "schema.sql"
+    return Path(__file__).resolve().parent / "schema.sql"
 
 _CST = timezone(timedelta(hours=8))
 
@@ -85,9 +98,10 @@ class Database:
         )
 
     def _apply_v1(self) -> None:
-        if not SCHEMA_PATH.is_file():
-            raise StorageError(f"schema file missing: {SCHEMA_PATH}")
-        sql = SCHEMA_PATH.read_text(encoding="utf-8")
+        schema = schema_sql_path()
+        if not schema.is_file():
+            raise StorageError(f"schema file missing: {schema}")
+        sql = schema.read_text(encoding="utf-8")
         self.connection.executescript(sql)
         self._record_migration(1)
         logger.info("applied schema migration to v1")

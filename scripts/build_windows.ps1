@@ -63,6 +63,14 @@ if (-not (Test-Path $Exe)) {
   throw "Build failed: missing EXE $Exe"
 }
 
+# schema.sql must land in the onedir payload. v0.11.0 omitted it and frozen
+# DB init raised "schema file missing" / "Failed to execute script 'run_app'".
+$SchemaPacked = Join-Path $DistDir "_internal\app\storage\schema.sql"
+if (-not (Test-Path -LiteralPath $SchemaPacked)) {
+  throw "Build failed: schema.sql was not packed at $SchemaPacked"
+}
+Write-Host "packed schema.sql OK: $SchemaPacked"
+
 # Copy browsers beside the app so PLAYWRIGHT_BROWSERS_PATH can resolve next to EXE
 $DistBrowsers = Join-Path $DistDir "ms-playwright"
 Write-Host "Copying Playwright browsers to $DistBrowsers"
@@ -83,6 +91,41 @@ function Get-DirSizeMB([string]$Path) {
 $exeSize = [math]::Round((Get-Item $Exe).Length / 1MB, 2)
 $distSize = Get-DirSizeMB $DistDir
 $browserSize = Get-DirSizeMB $DistBrowsers
+
+# DB init, then a second launch against the same user database (restart).
+# Fail the job if either run exits non-zero. This is a real Windows EXE smoke,
+# not a substitute for an interactive GUI click-through.
+function Invoke-ListTasksSmoke([string]$Label) {
+  Write-Host "EXE smoke ${Label}: DamaiTicketAssistant.exe --list-tasks"
+  $logDir = Join-Path $Root "build\exe-smoke"
+  New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+  $outLog = Join-Path $logDir "$Label.stdout.txt"
+  $errLog = Join-Path $logDir "$Label.stderr.txt"
+  if (Test-Path $outLog) { Remove-Item -Force $outLog }
+  if (Test-Path $errLog) { Remove-Item -Force $errLog }
+  $proc = Start-Process -FilePath $Exe -ArgumentList "--list-tasks" -Wait -PassThru `
+    -WorkingDirectory $DistDir `
+    -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+  $code = $proc.ExitCode
+  Write-Host "EXE smoke ${Label} exit code: $code"
+  if (Test-Path $outLog) {
+    Get-Content -Path $outLog -ErrorAction SilentlyContinue | Select-Object -First 40 | ForEach-Object {
+      Write-Host "stdout: $_"
+    }
+  }
+  if (Test-Path $errLog) {
+    Get-Content -Path $errLog -ErrorAction SilentlyContinue | Select-Object -First 40 | ForEach-Object {
+      Write-Host "stderr: $_"
+    }
+  }
+  if ($code -ne 0) {
+    throw "DamaiTicketAssistant.exe --list-tasks failed on $Label run (exit $code)"
+  }
+}
+
+Invoke-ListTasksSmoke "first"
+Invoke-ListTasksSmoke "second"
+Write-Host "EXE smoke OK"
 
 Write-Host "=== Build OK ==="
 Write-Host "EXE:  $Exe ($exeSize MB)"

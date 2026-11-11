@@ -40,6 +40,7 @@ a = Analysis(
     + pw_datas
     + [
         ("config/settings.example.yaml", "config"),
+        ("app/storage/schema.sql", "app/storage"),
         ("README.md", "."),
     ],
     hiddenimports=hiddenimports,
